@@ -7,8 +7,12 @@ if __name__=="__main__":
     # tokens. Handles stuff like apostrophes well to. i.e. 
     # "It's going to be a great example" turns into:
     # ['it', "'", 's', 'going', 'to', 'be', 'a', 'great', 'example']
-    vocab, tokenizer = get_data_torchtext()
+    # Data is the actual data of form [(target, text), ...]
+    vocab, tokenizer, data = get_data_torchtext()
 
-    print(vocab(tokenizer("Here is an an example string")))
+    # Create a function that processes text
+    text_fn  = lambda x: vocab(tokenizer(x))
+
+    print(text_fn("Here is an an example string"))
 
     

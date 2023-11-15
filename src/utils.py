@@ -115,4 +115,4 @@ def get_data_torchtext():
     vocab = build_vocab_from_iterator(yield_tokens(data), specials=["<unk>"])
     vocab.set_default_index(vocab["<unk>"])
 
-    return vocab, tokenizer
+    return vocab, tokenizer, data
