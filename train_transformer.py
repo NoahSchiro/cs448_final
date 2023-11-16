@@ -4,11 +4,16 @@ import torch
 from torch.nn import functional as F
 from torch.utils.data import Dataset, DataLoader
 
+# AMP optimizations
+from torch.cuda.amp import GradScaler, autocast
+
 DEVICE   = torch.device("cuda") if torch.cuda.is_available() else torch.device("CPU")
 EPOCHS   = 15
 LR       = 1e-3
-BATCH_SZ = 4
+BATCH_SZ = 1
 SPLIT    = 0.9
+
+scaler = GradScaler()
 
 # Vocab will take in a [str, str, str] and return [int, int, int]
 # Tokenizer takes a string and breaks it up into the appropriate
@@ -59,15 +64,18 @@ def train(dl, model, optim, loss_fn):
 
         # Data comes in as [batch_sz, 230]
         # We need [230, batch_sz]
-        texts = texts.t()
+        texts = texts.t().to(DEVICE)
+        labels = labels.to(DEVICE)
         
         optim.zero_grad()
 
-        prediction = model(texts)
-        loss = loss_fn(labels, prediction)
+        with autocast():
+            prediction = model(texts)
+            loss = loss_fn(labels, prediction)
 
-        loss.backward()
-        optim.step()
+        scaler.scale(loss).backward()
+        scaler.step(optim)
+        scaler.update()
 
         if batch % 1000 == 0:
             print(f"Batch {batch:4d}/{len(dl):4d} | loss = {loss:.5f}")
@@ -86,10 +94,12 @@ def test(dl, model):
  
         # Data comes in as [batch_sz, 230]
         # We need [230, batch_sz]
-        texts = texts.t()
+        texts = texts.t().to(DEVICE)
+        labels = labels.to(DEVICE)
 
-        prediction = model(texts)
-        loss = loss_fn(labels, prediction)
+        with autocast():
+            prediction = model(texts)
+            loss = loss_fn(labels, prediction)
 
         gt_idx = torch.argmax(labels, dim=1)
         pred_idx = torch.argmax(prediction, dim=1)
@@ -125,8 +135,8 @@ if __name__=="__main__":
 
     # Convert to DL
     # Add pin_mem and num_workers when we get to optimization
-    train_dl = DataLoader(train_ds, batch_size=BATCH_SZ, shuffle=True)
-    test_dl  = DataLoader(test_ds,  batch_size=BATCH_SZ, shuffle=True)
+    train_dl = DataLoader(train_ds, batch_size=BATCH_SZ, shuffle=True, pin_memory=True, num_workers=8)
+    test_dl  = DataLoader(test_ds,  batch_size=BATCH_SZ, shuffle=True, pin_memory=True, num_workers=8)
 
     model = TransformerModel(
         vocab_size=len(vocab),
@@ -135,7 +145,7 @@ if __name__=="__main__":
         num_layers=8,     # Dunno, common practice
         context_size=230, # Determined by max tweet size
         num_classes=3     # Determined by dataset
-    )
+    ).to(DEVICE)
 
     optim = torch.optim.SGD(model.parameters(), lr=LR)
     loss_fn = torch.nn.CrossEntropyLoss()
