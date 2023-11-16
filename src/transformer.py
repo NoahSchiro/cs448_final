@@ -33,7 +33,6 @@ class TransformerModel(nn.Module):
         # Assuming x is the input tensor of shape (sequence_length, batch_size)
         # AND x must be 230 tokens long
 
-
         # Embedding layer
         x = self.embedding(x)
 
