@@ -15,9 +15,9 @@ from torch.cuda.amp import GradScaler, autocast
 DEVICE   = torch.device("cuda") if torch.cuda.is_available() else torch.device("CPU")
 EPOCHS   = 15
 LR       = 1e-3
-BATCH_SZ = 32
+BATCH_SZ = 64
 SPLIT    = 0.9
-CONTEXT  = 50
+CONTEXT  = 20
 
 scaler = GradScaler()
 
@@ -29,6 +29,12 @@ scaler = GradScaler()
 # Data is the actual data of form [(target, text), ...]
 # Note I need this to be globally available for efficiency reasons
 vocab, tokenizer, data = get_data_torchtext()
+
+def avg_gradient(model):
+    gradient_sum = sum(abs(param.grad.sum().item()) for param in model.parameters() if param.requires_grad)
+    parameter_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+    print(f"Avg gradient: {gradient_sum / parameter_count}")
 
 class TransformerDataset(Dataset):
     def __init__(self, data):
@@ -60,11 +66,9 @@ class TransformerDataset(Dataset):
         vector = self.text_preprocessing(text)
         # Weirdly, the labels are
         # 0 -> Negative
-        # 2 -> Neutral
         # 4 -> Positive.
-        # Divide by 2 and now it is 0, 1, 2
-        label /= 2
-        label  = F.one_hot(torch.tensor(label).to(torch.int64), 3).to(torch.float32)
+        label /= 4
+        label  = torch.tensor(label).to(torch.int64)
         return label, vector
 
 def train(dl, model, optim, loss_fn):
@@ -86,7 +90,7 @@ def train(dl, model, optim, loss_fn):
 
         with autocast():
             prediction = model(texts)
-            loss = loss_fn(labels, prediction)
+            loss = loss_fn(prediction, labels)
 
         avg_loss += loss.item()
 
@@ -94,12 +98,13 @@ def train(dl, model, optim, loss_fn):
         scaler.step(optim)
         scaler.update()
 
-        if batch % 1000 == 0:
+        if batch % 100 == 0:
             delta = time() - last_batch_time
             delta = timedelta(seconds=delta)
-            avg_loss /= 1000
+            avg_loss /= 100
             print(f"Batch {batch:4d}/{len(dl):4d} | loss = {avg_loss:.5f} | {delta}")
             avg_loss = 0
+            avg_gradient(model)
 
     epoch_time = timedelta(seconds=time() - epoch_start_time)
     print(f"Epoch took {epoch_time}")
@@ -112,6 +117,8 @@ def test(dl, model):
     # Keep track of average loss for a batch
     avg_loss = 0 
     correct = 0
+
+    print_okay = True
     
     print("Testing...")
     for (labels, texts) in tqdm(dl):
@@ -123,13 +130,17 @@ def test(dl, model):
 
         with autocast():
             prediction = model(texts)
-            loss = loss_fn(labels, prediction)
+            loss = loss_fn(prediction, labels)
         
-        gt_idx = torch.argmax(labels, dim=1)
         pred_idx = torch.argmax(prediction, dim=1)
 
+        if print_okay:
+            print(f"Prediciton: {pred_idx}")
+            print(f"labels: {labels}")
+            print_okay = False
+
         # Count the number of correct predictions
-        correct += torch.sum(gt_idx == pred_idx).item()
+        correct += torch.sum(pred_idx == labels).item()
 
         avg_loss += loss.item()
 
@@ -148,6 +159,7 @@ if __name__=="__main__":
     print("Working on preprocessing...")
 
     shuffle(data)
+    data = data[:int(len(data) * 0.1)]
 
     # Train test split
     split_idx = int(len(data) * SPLIT)
@@ -161,13 +173,13 @@ if __name__=="__main__":
     # Convert to DL
     # Add pin_mem and num_workers when we get to optimization
     train_dl = DataLoader(train_ds, batch_size=BATCH_SZ, shuffle=True, pin_memory=True, num_workers=12)
-    test_dl  = DataLoader(test_ds,  batch_size=10, shuffle=True, pin_memory=True, num_workers=12)
+    test_dl  = DataLoader(test_ds,  batch_size=BATCH_SZ, shuffle=True, pin_memory=True, num_workers=12)
 
     model = TransformerModel(
         vocab_size=len(vocab),
         embed_size=256,       # We have a decent sized vocab so I am selecting a fairly high dim
         num_heads=8,          # Dunno, common practice
-        num_layers=8,         # Dunno, common practice
+        num_layers=12,        # Dunno, common practice
         context_size=CONTEXT, # Determined by max tweet size
         num_classes=3         # Determined by dataset
     ).to(DEVICE)
