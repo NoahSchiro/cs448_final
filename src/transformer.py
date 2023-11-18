@@ -1,4 +1,4 @@
-import torch
+from torch.nn import functional as F
 from torch import nn
 
 class TransformerModel(nn.Module):
@@ -45,4 +45,4 @@ class TransformerModel(nn.Module):
         # Classification layer
         x = self.fc(x)
 
-        return x
+        return F.softmax(x, dim=1)
