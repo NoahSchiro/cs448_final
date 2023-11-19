@@ -12,11 +12,11 @@ from torch.utils.data import Dataset, DataLoader
 from torch.cuda.amp import GradScaler, autocast
 
 DEVICE   = torch.device("cuda") if torch.cuda.is_available() else torch.device("CPU")
-EPOCHS   = 15
+EPOCHS   = 6
 LR       = 1e-3
 BATCH_SZ = 64
 SPLIT    = 0.9
-CONTEXT  = 20
+CONTEXT  = 50
 
 scaler = GradScaler()
 
@@ -30,9 +30,8 @@ scaler = GradScaler()
 vocab, tokenizer, data = get_data_torchtext()
 
 def avg_gradient(model):
-    gradient_sum = sum(abs(param.grad.sum().item()) for param in model.parameters() if param.requires_grad)
+    gradient_sum    = sum(abs(param.grad.sum().item()) for param in model.parameters() if param.requires_grad)
     parameter_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
-
     print(f"Avg gradient: {gradient_sum / parameter_count}")
 
 class TransformerDataset(Dataset):
@@ -97,10 +96,10 @@ def train(dl, model, optim, loss_fn):
         scaler.step(optim)
         scaler.update()
 
-        if batch % 100 == 0:
+        if batch % 1000 == 0:
             delta = time() - last_batch_time
             delta = timedelta(seconds=delta)
-            avg_loss /= 100
+            avg_loss /= 1000
             print(f"Batch {batch:4d}/{len(dl):4d} | loss = {avg_loss:.5f} | {delta}")
             avg_loss = 0
             avg_gradient(model)
@@ -176,9 +175,9 @@ if __name__=="__main__":
 
     model = TransformerModel(
         vocab_size=len(vocab),
-        embed_size=256,       # We have a decent sized vocab so I am selecting a fairly high dim
-        num_heads=2,          # Dunno, common practice
-        num_layers=1,        # Dunno, common practice
+        embed_size=264,       # We have a decent sized vocab so I am selecting a fairly high dim
+        num_heads=12,         # Dunno, common practice
+        num_layers=1,         # Anything more than 1 and we run into a vanishing gradient
         context_size=CONTEXT, # Determined by max tweet size
         num_classes=2         # Determined by dataset
     ).to(DEVICE)

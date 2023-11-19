@@ -19,7 +19,7 @@ def get_data_torchtext():
     # This has form [(target, text), (target, text), ...]
     data = [tuple(x) for x in df.to_numpy()]
     shuffle(data)
-    data = data[:int(len(data) * 0.01)]
+    data = data[:int(len(data) * 0.4)]
 
     # Torchtext tokenizer
     tokenizer = get_tokenizer("basic_english")

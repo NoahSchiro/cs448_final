@@ -48,6 +48,23 @@ class TransformerModel(nn.Module):
 
         self.context_size = context_size
 
+        # Initialize weights
+        self.init_weights()
+
+    def init_weights(self):
+        for name, param in self.named_parameters():
+            if 'weight' in name:
+                if 'l1' in name:  # Initialize weights for the classification linear layer
+                    if param.ndimension() > 1:
+                        nn.init.xavier_normal_(param.data)
+                    else:
+                        nn.init.normal_(param.data)
+                else:
+                    if param.ndimension() > 1:
+                        nn.init.xavier_uniform_(param.data)
+                    else:
+                        nn.init.uniform_(param.data)
+
     def forward(self, x):
         # Assuming x is the input tensor of shape (sequence_length, batch_size)
 
