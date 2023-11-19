@@ -1,3 +1,5 @@
+from random import shuffle
+
 import pandas as pd
 from torchtext.data.utils import get_tokenizer
 from torchtext.vocab import build_vocab_from_iterator
@@ -16,6 +18,8 @@ def get_data_torchtext():
     # Convert to a python object so I don't have to deal with pandas
     # This has form [(target, text), (target, text), ...]
     data = [tuple(x) for x in df.to_numpy()]
+    shuffle(data)
+    data = data[:int(len(data) * 0.01)]
 
     # Torchtext tokenizer
     tokenizer = get_tokenizer("basic_english")
@@ -23,7 +27,6 @@ def get_data_torchtext():
     def yield_tokens(data):
         for _, text in data:
             yield tokenizer(text)
-
 
     vocab = build_vocab_from_iterator(yield_tokens(data), specials=["<unk>"])
     vocab.set_default_index(vocab["<unk>"])

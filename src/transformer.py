@@ -43,7 +43,8 @@ class TransformerModel(nn.Module):
         )
 
         # Linear layer for classification
-        self.fc = nn.Linear(embed_size, num_classes)
+        self.l1 = nn.Linear(embed_size, 64)
+        self.l2 = nn.Linear(64, num_classes)
 
         self.context_size = context_size
 
@@ -52,16 +53,45 @@ class TransformerModel(nn.Module):
 
         # Embedding layer
         x = self.embedding(x)
-
+        
         x = self.pos_enc(x)
-
+        
         # Transformer layer
         x = self.transformer(x, x)
-
+        
         # Global average pooling
         x = x.mean(dim=0)
-
+        
         # Classification layer
-        x = self.fc(x)
+        x = self.l1(x)
+        x = F.relu(x)
+        x = self.l2(x)
 
         return F.softmax(x, dim=1)
+
+class SimpleTextClassifier(nn.Module):
+    def __init__(self, vocab_size, embed_size, hidden_size, num_classes):
+        super(SimpleTextClassifier, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_size)
+        self.fc1 = nn.Linear(embed_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, num_classes)
+
+    def forward(self, x):
+        # x shape: (batch_size, sequence_length)
+        x = x.t()
+        # x shape: (sequence_length, batch_size)
+
+        # Embedding layer
+        x = self.embedding(x)
+        
+        # Global average pooling
+        x = torch.mean(x, dim=1)
+
+        # Fully connected layers
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+
+        # Apply softmax activation for classification
+        x = F.softmax(x, dim=1)
+
+        return x

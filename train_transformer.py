@@ -1,10 +1,9 @@
-from random import shuffle
 from time import time
 from datetime import timedelta
 from tqdm import tqdm
 
 from src.utils import get_data_torchtext
-from src.transformer import TransformerModel
+from src.transformer import TransformerModel, SimpleTextClassifier
 import torch
 from torch.nn import functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -135,7 +134,8 @@ def test(dl, model):
         pred_idx = torch.argmax(prediction, dim=1)
 
         if print_okay:
-            print(f"Prediciton: {pred_idx}")
+            #print(f"Prediciton: {prediction}")
+            print(pred_idx)
             print(f"labels: {labels}")
             print_okay = False
 
@@ -156,10 +156,9 @@ if __name__=="__main__":
     # Average token length is 16.56
 
     print("Data loaded...")
+    print(f"Dataset size: {len(data)}")
+    print(f"Vocab size: {len(vocab)}")
     print("Working on preprocessing...")
-
-    shuffle(data)
-    data = data[:int(len(data) * 0.1)]
 
     # Train test split
     split_idx = int(len(data) * SPLIT)
@@ -178,11 +177,17 @@ if __name__=="__main__":
     model = TransformerModel(
         vocab_size=len(vocab),
         embed_size=256,       # We have a decent sized vocab so I am selecting a fairly high dim
-        num_heads=8,          # Dunno, common practice
-        num_layers=12,        # Dunno, common practice
+        num_heads=2,          # Dunno, common practice
+        num_layers=1,        # Dunno, common practice
         context_size=CONTEXT, # Determined by max tweet size
-        num_classes=3         # Determined by dataset
+        num_classes=2         # Determined by dataset
     ).to(DEVICE)
+    # model = SimpleTextClassifier(
+    #     vocab_size=len(vocab),
+    #     embed_size=256,
+    #     hidden_size=64,
+    #     num_classes=2
+    # ).to(DEVICE)
 
     optim = torch.optim.Adam(model.parameters(), lr=LR)
     loss_fn = torch.nn.CrossEntropyLoss()
