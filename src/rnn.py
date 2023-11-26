@@ -8,7 +8,7 @@ class SimpleRNNModel(nn.Module):
     def __init__(self, vocab_size, embed_size, hidden_size, output_size):
         super(SimpleRNNModel, self).__init__()
 
-        self.embedding = nn.Embedding(vocab_size, embed_size)
+        self.embedding = nn.EmbeddingBag(vocab_size, embed_size, sparse=True)
         self.rnn = nn.RNN(embed_size, hidden_size, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
@@ -41,16 +41,14 @@ num_epochs = 5
 batch_size = 32
 learning_rate = 0.001
 
-# Model
+# Model, loss, and optimizer
 model = SimpleRNNModel(vocab_size, embed_size, hidden_size, num_classes)
-
-# Loss and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 # Converting to DataLoader
 train_data = TensorDataset(X_train, torch.tensor(y_train, dtype=torch.long))
-train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
 
 # Training loop
 for epoch in range(num_epochs):
@@ -69,4 +67,3 @@ with torch.no_grad():
     accuracy = (predicted_labels == torch.tensor(y_test, dtype=torch.long)).float().mean()
 
 print(f'Accuracy: {accuracy.item()}')
-
