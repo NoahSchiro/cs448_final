@@ -35,4 +35,4 @@ def get_data_torchtext(file_path="./data/data.csv", sample_fraction=0.4, vocab_s
     vocab = build_vocab_from_iterator(yield_tokens(data), specials=vocab_specials)
     vocab.set_default_index(vocab[vocab_specials[0]])
 
-    return vocab, tokenizer, data
+    return vocab, tokenizer, data 
