@@ -12,7 +12,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.cuda.amp import GradScaler, autocast
 
 DEVICE   = torch.device("cuda") if torch.cuda.is_available() else torch.device("CPU")
-EPOCHS   = 6
+EPOCHS   = 2 # Model tends to overfit after just 1 epoch!
 LR       = 1e-3
 BATCH_SZ = 64
 SPLIT    = 0.9
@@ -29,6 +29,7 @@ scaler = GradScaler()
 # Note I need this to be globally available for efficiency reasons
 vocab, tokenizer, data = get_data_torchtext()
 
+# For debugging
 def avg_gradient(model):
     gradient_sum    = sum(abs(param.grad.sum().item()) for param in model.parameters() if param.requires_grad)
     parameter_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -66,7 +67,7 @@ class TransformerDataset(Dataset):
         # 0 -> Negative
         # 4 -> Positive.
         label /= 4
-        label  = torch.tensor(label).to(torch.int64)
+        label = torch.tensor(label).to(torch.int64)
         return label, vector
 
 def train(dl, model, optim, loss_fn):
@@ -102,7 +103,7 @@ def train(dl, model, optim, loss_fn):
             avg_loss /= 1000
             print(f"Batch {batch:4d}/{len(dl):4d} | loss = {avg_loss:.5f} | {delta}")
             avg_loss = 0
-            avg_gradient(model)
+            #avg_gradient(model) debugging code
 
     epoch_time = timedelta(seconds=time() - epoch_start_time)
     print(f"Epoch took {epoch_time}")
@@ -115,8 +116,6 @@ def test(dl, model):
     # Keep track of average loss for a batch
     avg_loss = 0 
     correct = 0
-
-    print_okay = True
     
     print("Testing...")
     for (labels, texts) in tqdm(dl):
@@ -132,12 +131,6 @@ def test(dl, model):
         
         pred_idx = torch.argmax(prediction, dim=1)
 
-        if print_okay:
-            #print(f"Prediciton: {prediction}")
-            print(pred_idx)
-            print(f"labels: {labels}")
-            print_okay = False
-
         # Count the number of correct predictions
         correct += torch.sum(pred_idx == labels).item()
 
@@ -146,8 +139,12 @@ def test(dl, model):
     avg_loss /= len(dl)
     total = len(dl.dataset)
 
-    print(f"Accuracy: {(correct / total)*100:2.2f}")
+    accuracy = (correct / total) * 100
+
+    print(f"Accuracy: {accuracy:2.2f}")
     print(f"Avg loss: {avg_loss:.5f}")
+
+    return accuracy
 
 if __name__=="__main__":
     
@@ -191,8 +188,16 @@ if __name__=="__main__":
     optim = torch.optim.Adam(model.parameters(), lr=LR)
     loss_fn = torch.nn.CrossEntropyLoss()
 
+    best_acc = 0.0
+
     for epoch in range(1, EPOCHS+1):
         print(f"Starting epoch {epoch}")
         train(train_dl, model, optim, loss_fn)
-        test(test_dl, model)
+        acc = test(test_dl, model)
+
+        # Save the best performing model
+        if acc > best_acc:
+            torch.save(model.state_dict(), "./results/transformer_best.pth")
+            best_acc = acc
+        print(f"Best acc is now {best_acc:.2f}%")
 
