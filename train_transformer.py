@@ -18,7 +18,16 @@ BATCH_SZ = 64
 SPLIT    = 0.9
 CONTEXT  = 50
 
+# TODO: Add training and validation accuracy history (added, need to test on main PC)
+# TODO: Add training and validation loss history (added, need to test on main PC)
+# TODO: Add model inference on new text (added, need to test on main PC)
+# this means I also need to save the tokenizer and vocab
+
 scaler = GradScaler()
+train_loss_history = []
+val_loss_history   = []
+train_acc_history  = [50.]
+val_acc_history    = [50.]
 
 # Vocab will take in a [str, str, str] and return [int, int, int]
 # Tokenizer takes a string and breaks it up into the appropriate
@@ -28,6 +37,8 @@ scaler = GradScaler()
 # Data is the actual data of form [(target, text), ...]
 # Note I need this to be globally available for efficiency reasons
 vocab, tokenizer, data = get_data_torchtext()
+torch.save(vocab, "./results/vocab.pth")
+torch.save(tokenizer, "./results/tokenizer.pth")
 
 # For debugging
 def avg_gradient(model):
@@ -77,6 +88,8 @@ def train(dl, model, optim, loss_fn):
     last_batch_time = time()
     epoch_start_time = time()
     avg_loss = 0
+    correct = 0
+    total = 0
 
     for batch, (labels, texts) in enumerate(dl):
 
@@ -90,6 +103,11 @@ def train(dl, model, optim, loss_fn):
         with autocast():
             prediction = model(texts)
             loss = loss_fn(prediction, labels)
+        
+        # Count the number of correct predictions
+        pred_idx = torch.argmax(prediction, dim=1)
+        correct += torch.sum(pred_idx == labels).item()
+        total   += BATCH_SZ
 
         avg_loss += loss.item()
 
@@ -97,12 +115,19 @@ def train(dl, model, optim, loss_fn):
         scaler.step(optim)
         scaler.update()
 
-        if batch % 1000 == 0:
+        if batch % 100 == 0:
             delta = time() - last_batch_time
             delta = timedelta(seconds=delta)
             avg_loss /= 1000
+            train_loss_history.append(avg_loss)
             print(f"Batch {batch:4d}/{len(dl):4d} | loss = {avg_loss:.5f} | {delta}")
             avg_loss = 0
+
+            acc = correct / total
+            train_acc_history.append(acc)
+            correct = 0
+            total = 0
+
             #avg_gradient(model) debugging code
 
     epoch_time = timedelta(seconds=time() - epoch_start_time)
@@ -137,9 +162,12 @@ def test(dl, model):
         avg_loss += loss.item()
 
     avg_loss /= len(dl)
+    val_loss_history.append(avg_loss)
+
     total = len(dl.dataset)
 
     accuracy = (correct / total) * 100
+    val_acc_history.append(accuracy)
 
     print(f"Accuracy: {accuracy:2.2f}")
     print(f"Avg loss: {avg_loss:.5f}")
