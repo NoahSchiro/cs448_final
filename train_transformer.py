@@ -12,7 +12,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.cuda.amp import GradScaler, autocast
 
 DEVICE   = torch.device("cuda") if torch.cuda.is_available() else torch.device("CPU")
-EPOCHS   = 2 # Model tends to overfit after just 1 epoch!
+EPOCHS   = 1 # Model tends to overfit after just 1 epoch!
 LR       = 1e-3
 BATCH_SZ = 64
 SPLIT    = 0.9
@@ -27,7 +27,7 @@ scaler = GradScaler()
 train_loss_history = []
 val_loss_history   = []
 train_acc_history  = [50.]
-val_acc_history    = [50.]
+val_acc_history    = []
 
 # Vocab will take in a [str, str, str] and return [int, int, int]
 # Tokenizer takes a string and breaks it up into the appropriate
@@ -115,15 +115,16 @@ def train(dl, model, optim, loss_fn):
         scaler.step(optim)
         scaler.update()
 
-        if batch % 100 == 0:
+        if batch % 100 == 0 and batch != 0:
             delta = time() - last_batch_time
             delta = timedelta(seconds=delta)
-            avg_loss /= 1000
+            avg_loss /= 100
             train_loss_history.append(avg_loss)
             print(f"Batch {batch:4d}/{len(dl):4d} | loss = {avg_loss:.5f} | {delta}")
             avg_loss = 0
 
             acc = correct / total
+            acc *= 100
             train_acc_history.append(acc)
             correct = 0
             total = 0
@@ -174,6 +175,41 @@ def test(dl, model):
 
     return accuracy
 
+def generate_graphs():
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    total_batches = len(train_loss_history)
+    epochs = np.linspace(0, EPOCHS, num=total_batches)
+
+    # Training / validation graph
+    plt.plot(epochs, train_loss_history, 'b', label='Training Loss')
+    plt.plot(np.arange(0, EPOCHS+1), val_loss_history, 'r', label='Validation Loss')
+    plt.title('Training and Validation Loss Over Time')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    plt.savefig("./results/loss.png")
+    plt.clf()
+    
+    total_batches = len(train_acc_history)
+    epochs = np.linspace(0, EPOCHS, num=total_batches)
+
+    # Accuracy graph
+    plt.plot(epochs, train_acc_history, 'b', label='Train accuracy')
+    plt.plot(np.arange(0, EPOCHS+1), val_acc_history, 'r', label='Validation accuracy')
+    plt.title('Changes in accuracy over time')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    plt.savefig("./results/accuracy.png")
+    plt.clf()
+
+
+
 if __name__=="__main__":
     
     # Maximum token length is 229
@@ -218,6 +254,9 @@ if __name__=="__main__":
 
     best_acc = 0.0
 
+    # Pretraining test
+    test(test_dl, model)
+
     for epoch in range(1, EPOCHS+1):
         print(f"Starting epoch {epoch}")
         train(train_dl, model, optim, loss_fn)
@@ -229,3 +268,5 @@ if __name__=="__main__":
             best_acc = acc
         print(f"Best acc is now {best_acc:.2f}%")
 
+    # Report metrics
+    generate_graphs()
