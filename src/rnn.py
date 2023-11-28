@@ -1,55 +1,34 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchtext.data.utils import get_tokenizer
-from torchtext.vocab import build_vocab_from_iterator
-from torchtext.data.functional import data_tabular
-from torchtext.legacy.data import BucketIterator
-
-# Importing util functions
+from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 from utils import get_data_torchtext
 
 # Loading data and preprocessing
 file_path = "./data/data.csv"
 vocab_specials = ["<unk>"]
-get_data_torchtext(file_path=file_path, vocab_specials=vocab_specials)
+vocab, tokenizer, data = get_data_torchtext(file_path=file_path, vocab_specials=vocab_specials)
 
 # Defining the RNN model
 class SimpleRNN(nn.Module):
     def __init__(self, input_dim, embedding_dim, hidden_dim, output_dim):
         super(SimpleRNN, self).__init__()
         self.embedding = nn.Embedding(input_dim, embedding_dim)
-        self.rnn = nn.RNN(embedding_dim, hidden_dim)
+        self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True)
         self.fc = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, text):
+    def forward(self, text, lengths):
         embedded = self.embedding(text)
-        output, hidden = self.rnn(embedded)
-        assert torch.equal(output[-1, :, :], hidden.squeeze(0))
+        packed_embedded = pack_padded_sequence(embedded, lengths, batch_first=True, enforce_sorted=False)
+        packed_output, hidden = self.rnn(packed_embedded)
+        output, _ = pad_packed_sequence(packed_output, batch_first=True)
         return self.fc(hidden.squeeze(0))
 
-# Tokenizer
-tokenizer = get_tokenizer("basic_english")
-
-# Defining a generator function to yield tokens
-def yield_tokens(data):
-    for _, text in data:
-        yield tokenizer(text)
-
-# Building vocabulary
-data = data_tabular(
-    path=file_path,
-    format='csv',
-    fields=[('target', None), ('text', None)],
-    skip_header=True,
-    csv_reader_params={'quotechar': '"', 'quoting': True}
-)
-
-vocab = build_vocab_from_iterator(yield_tokens(data), specials=vocab_specials)
-vocab.set_default_index(vocab[vocab_specials[0]])
-
 # Splitting the data into training and validation sets
-train_data, valid_data = data.split(split_ratio=0.8)
+split_ratio = 0.8
+split_index = int(len(data) * split_ratio)
+train_data, valid_data = data[:split_index], data[split_index:]
 
 # Initializing the model, optimizer, and loss function
 input_dim = len(vocab)
@@ -65,27 +44,24 @@ criterion = nn.BCEWithLogitsLoss()
 def numericalize_text(text):
     return [vocab[token] for token in tokenizer(text)]
 
-# Updating the fields in the dataset with the numericalized text
-train_data.fields['text'].numericalize = numericalize_text
-valid_data.fields['text'].numericalize = numericalize_text
-
-# Using BucketIterator for efficient batch handling
-train_iterator, valid_iterator = BucketIterator.splits(
-    (train_data, valid_data),
-    batch_size=64,
-    sort_key=lambda x: len(x.text),
-    sort_within_batch=True
+# Using DataLoader for efficient batch handling
+collate_fn = lambda batch: (
+    torch.tensor([item[0] for item in batch], dtype=torch.float),  # labels
+    pad_sequence([torch.tensor(numericalize_text(item[1])) for item in batch], batch_first=True),  # text
+    [len(item[1]) for item in batch]  # lengths
 )
+
+train_loader = DataLoader(train_data, batch_size=64, shuffle=True, collate_fn=collate_fn)
+valid_loader = DataLoader(valid_data, batch_size=64, shuffle=False, collate_fn=collate_fn)
 
 # Training loop
 epochs = 5
 for epoch in range(epochs):
     model.train()
-    for batch in train_iterator:
-        text, text_lengths = batch.text
+    for labels, text, lengths in train_loader:
         optimizer.zero_grad()
-        predictions = model(text).squeeze(1)
-        loss = criterion(predictions, batch.target)
+        predictions = model(text, lengths).squeeze(1)
+        loss = criterion(predictions, labels)
         loss.backward()
         optimizer.step()
 
@@ -95,12 +71,11 @@ correct_predictions = 0
 total_examples = 0
 
 with torch.no_grad():
-    for batch in valid_iterator:
-        text, text_lengths = batch.text
-        predictions = model(text).squeeze(1)
+    for labels, text, lengths in valid_loader:
+        predictions = model(text, lengths).squeeze(1)
         rounded_predictions = torch.round(torch.sigmoid(predictions))
-        correct_predictions += (rounded_predictions == batch.target).sum().item()
-        total_examples += batch.target.size(0)
+        correct_predictions += (rounded_predictions == labels).sum().item()
+        total_examples += labels.size(0)
 
 accuracy = correct_predictions / total_examples
 print(f'Validation Accuracy: {accuracy * 100:.2f}%')
