@@ -23,7 +23,11 @@ class SimpleRNN(nn.Module):
         packed_embedded = pack_padded_sequence(embedded, lengths, batch_first=True, enforce_sorted=False)
         packed_output, hidden = self.rnn(packed_embedded)
         output, _ = pad_packed_sequence(packed_output, batch_first=True)
-        return self.fc(hidden.squeeze(0))
+        
+        # Applying the linear layer to the output of the packed sequence
+        hidden = hidden.squeeze(0)
+        hidden = hidden[lengths - 1, range(len(lengths))] # getting the last output for each sequence
+        return self.fc(hidden)
 
 # Splitting the data into training and validation sets
 split_ratio = 0.8
