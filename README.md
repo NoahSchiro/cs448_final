@@ -3,6 +3,13 @@
 
 Dataset: https://www.kaggle.com/code/paoloripamonti/twitter-sentiment-analysis/input
 
+   ## Sentiment Analysis using Simple RNN
+
+### Overview
+This repository contains a sentiment analysis model implemented in PyTorch, utilizing a simple recurrent neural network (RNN). The model is trained on a labeled dataset of tweets, aiming to predict sentiment polarity. Key components include data preprocessing, model architecture, training, and evaluation loops.
+
+### Dataset
+The dataset, sourced from "./data/data.csv," undergoes preprocessing using the TorchText library. A subset of the data is loaded and tokenized, and a vocabulary is built. Challenges arise from label inaccuracies in the dataset, as some tweets with neutral sentiment are labeled as positive or negative.
 
 # RNN Text Classification with PyTorch
 
@@ -23,11 +30,17 @@ The implementation consists of the following components:
 
 The data is loaded from a CSV file using the `pandas` library. The target labels are encoded using `LabelEncoder`.
 
+### Model Architecture
+The sentiment analysis model is built with a simple RNN, comprising an embedding layer, an RNN layer, and a linear layer. The RNN processes packed sequences, allowing for efficient handling of variable-length input.
+
+### Training and Evaluation
+The model is trained using stochastic gradient descent with a binary cross-entropy loss. Training progress is visualized with tqdm progress bars. The evaluation loop calculates accuracy on a separate validation set, revealing the model's ability to generalize.
 
 # Label encoding for target
+```python
 label_encoder = LabelEncoder() 
 df['target'] = label_encoder.fit_transform(df['target'])
-
+```
 
 ### Tokenization and Vocabulary Building
 
@@ -69,3 +82,12 @@ The trained model is evaluated on a separate test set, and accuracy is calculate
    ```bash
    pip install torch tqdm scikit-learn
    ```
+
+### Challenges and Solutions
+To address padding-related runtime errors, the code implements a more stable padding approach. Sorting the batch by descending lengths resolves dimension size issues, ensuring smooth execution.
+
+### Results
+After five epochs, the model achieves a validation accuracy of 76.62%. This promising result is presented along with ongoing work on visualizations, including training vs. validation loss plots and example predictions.
+
+### Conclusions
+Despite dataset labeling challenges, the model demonstrates robustness and potential for improvement. Observations about dataset limitations are insightful, providing context for the achieved accuracy. This contribution significantly enhances the model's usability and sets the stage for further optimizations.
