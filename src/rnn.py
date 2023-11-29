@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 from utils import get_data_torchtext
+from tqdm import tqdm
 
 # Loading data and preprocessing
 file_path = "./data/data.csv"
@@ -20,14 +21,10 @@ class SimpleRNN(nn.Module):
 
     def forward(self, text, lengths):
         embedded = self.embedding(text)
-        packed_embedded = pack_padded_sequence(embedded, lengths, batch_first=True, enforce_sorted=False)
+        packed_embedded = pack_padded_sequence(embedded, lengths, batch_first=True, enforce_sorted=True)
         packed_output, hidden = self.rnn(packed_embedded)
-        output, _ = pad_packed_sequence(packed_output, batch_first=True)
-        
-        # Applying the linear layer to the output of the packed sequence
-        hidden = hidden.squeeze(0)
-        hidden = hidden[lengths - 1, range(len(lengths))] # getting the last output for each sequence
-        return self.fc(hidden)
+        return self.fc(hidden[-1])
+
 
 # Splitting the data into training and validation sets
 split_ratio = 0.8
@@ -44,42 +41,56 @@ model = SimpleRNN(input_dim, embedding_dim, hidden_dim, output_dim)
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 criterion = nn.BCEWithLogitsLoss()
 
-# Function to numericalize the text
-def numericalize_text(text):
-    return [vocab[token] for token in tokenizer(text)]
+ 
+def collate_fn(batch):
+    labels = torch.tensor([item[0] for item in batch], dtype=torch.float)
+    texts = [torch.tensor(numericalize_text(item[1])) for item in batch]
+    lengths = torch.tensor([len(text) for text in texts])
 
-# Using DataLoader for efficient batch handling
-collate_fn = lambda batch: (
-    torch.tensor([item[0] for item in batch], dtype=torch.float),  # labels
-    pad_sequence([torch.tensor(numericalize_text(item[1])) for item in batch], batch_first=True),  # text
-    [len(item[1]) for item in batch]  # lengths
-)
+    # Pad the sequences
+    texts_padded = pad_sequence(texts, batch_first=True)
+   
+    # Sort the batch by descending lengths
+    lengths, sort_idx = lengths.sort(descending=True)
+    texts_padded = texts_padded[sort_idx]
+    labels = labels[sort_idx]
+   
+    return labels, texts_padded, lengths
 
 train_loader = DataLoader(train_data, batch_size=64, shuffle=True, collate_fn=collate_fn)
 valid_loader = DataLoader(valid_data, batch_size=64, shuffle=False, collate_fn=collate_fn)
 
-# Training loop
+# Function to numericalize the text
+def numericalize_text(text):
+    return [vocab[token] for token in tokenizer(text)] 
+
+# Training loop with progress bar
 epochs = 5
 for epoch in range(epochs):
     model.train()
-    for labels, text, lengths in train_loader:
+    train_bar = tqdm(train_loader, desc=f'Training Epoch {epoch + 1}/{epochs}')
+    for labels, text, lengths in train_bar:
         optimizer.zero_grad()
         predictions = model(text, lengths).squeeze(1)
         loss = criterion(predictions, labels)
         loss.backward()
         optimizer.step()
+        # Update the progress bar with the loss
+        train_bar.set_postfix(loss=loss.item())
 
-# Evaluation loop
+# Evaluation loop with progress bar
 model.eval()
 correct_predictions = 0
 total_examples = 0
-
+valid_bar = tqdm(valid_loader, desc='Evaluating')
 with torch.no_grad():
-    for labels, text, lengths in valid_loader:
+    for labels, text, lengths in valid_bar:
         predictions = model(text, lengths).squeeze(1)
         rounded_predictions = torch.round(torch.sigmoid(predictions))
         correct_predictions += (rounded_predictions == labels).sum().item()
         total_examples += labels.size(0)
+        # Optionally update the progress bar here if you want to show additional info
+        valid_bar.set_postfix(accuracy=100.0 * correct_predictions / total_examples)
 
 accuracy = correct_predictions / total_examples
 print(f'Validation Accuracy: {accuracy * 100:.2f}%')
