@@ -12,13 +12,22 @@ from torch.utils.data import Dataset, DataLoader
 from torch.cuda.amp import GradScaler, autocast
 
 DEVICE   = torch.device("cuda") if torch.cuda.is_available() else torch.device("CPU")
-EPOCHS   = 2 # Model tends to overfit after just 1 epoch!
+EPOCHS   = 1 # Model tends to overfit after just 1 epoch!
 LR       = 1e-3
 BATCH_SZ = 64
 SPLIT    = 0.9
 CONTEXT  = 50
 
+# TODO: Add training and validation accuracy history (added, need to test on main PC)
+# TODO: Add training and validation loss history (added, need to test on main PC)
+# TODO: Add model inference on new text (added, need to test on main PC)
+# this means I also need to save the tokenizer and vocab
+
 scaler = GradScaler()
+train_loss_history = []
+val_loss_history   = []
+train_acc_history  = [50.]
+val_acc_history    = []
 
 # Vocab will take in a [str, str, str] and return [int, int, int]
 # Tokenizer takes a string and breaks it up into the appropriate
@@ -28,6 +37,8 @@ scaler = GradScaler()
 # Data is the actual data of form [(target, text), ...]
 # Note I need this to be globally available for efficiency reasons
 vocab, tokenizer, data = get_data_torchtext()
+torch.save(vocab, "./results/vocab.pth")
+torch.save(tokenizer, "./results/tokenizer.pth")
 
 # For debugging
 def avg_gradient(model):
@@ -77,6 +88,8 @@ def train(dl, model, optim, loss_fn):
     last_batch_time = time()
     epoch_start_time = time()
     avg_loss = 0
+    correct = 0
+    total = 0
 
     for batch, (labels, texts) in enumerate(dl):
 
@@ -90,6 +103,11 @@ def train(dl, model, optim, loss_fn):
         with autocast():
             prediction = model(texts)
             loss = loss_fn(prediction, labels)
+        
+        # Count the number of correct predictions
+        pred_idx = torch.argmax(prediction, dim=1)
+        correct += torch.sum(pred_idx == labels).item()
+        total   += BATCH_SZ
 
         avg_loss += loss.item()
 
@@ -97,12 +115,20 @@ def train(dl, model, optim, loss_fn):
         scaler.step(optim)
         scaler.update()
 
-        if batch % 1000 == 0:
+        if batch % 100 == 0 and batch != 0:
             delta = time() - last_batch_time
             delta = timedelta(seconds=delta)
-            avg_loss /= 1000
+            avg_loss /= 100
+            train_loss_history.append(avg_loss)
             print(f"Batch {batch:4d}/{len(dl):4d} | loss = {avg_loss:.5f} | {delta}")
             avg_loss = 0
+
+            acc = correct / total
+            acc *= 100
+            train_acc_history.append(acc)
+            correct = 0
+            total = 0
+
             #avg_gradient(model) debugging code
 
     epoch_time = timedelta(seconds=time() - epoch_start_time)
@@ -137,14 +163,52 @@ def test(dl, model):
         avg_loss += loss.item()
 
     avg_loss /= len(dl)
+    val_loss_history.append(avg_loss)
+
     total = len(dl.dataset)
 
     accuracy = (correct / total) * 100
+    val_acc_history.append(accuracy)
 
     print(f"Accuracy: {accuracy:2.2f}")
     print(f"Avg loss: {avg_loss:.5f}")
 
     return accuracy
+
+def generate_graphs():
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    total_batches = len(train_loss_history)
+    epochs = np.linspace(0, EPOCHS, num=total_batches)
+
+    # Training / validation graph
+    plt.plot(epochs, train_loss_history, 'b', label='Training Loss')
+    plt.plot(np.arange(0, EPOCHS+1), val_loss_history, 'r', label='Validation Loss')
+    plt.title('Training and Validation Loss Over Time')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    plt.savefig("./results/loss.png")
+    plt.clf()
+    
+    total_batches = len(train_acc_history)
+    epochs = np.linspace(0, EPOCHS, num=total_batches)
+
+    # Accuracy graph
+    plt.plot(epochs, train_acc_history, 'b', label='Train accuracy')
+    plt.plot(np.arange(0, EPOCHS+1), val_acc_history, 'r', label='Validation accuracy')
+    plt.title('Changes in accuracy over time')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    plt.savefig("./results/accuracy.png")
+    plt.clf()
+
+
 
 if __name__=="__main__":
     
@@ -190,6 +254,9 @@ if __name__=="__main__":
 
     best_acc = 0.0
 
+    # Pretraining test
+    test(test_dl, model)
+
     for epoch in range(1, EPOCHS+1):
         print(f"Starting epoch {epoch}")
         train(train_dl, model, optim, loss_fn)
@@ -201,3 +268,5 @@ if __name__=="__main__":
             best_acc = acc
         print(f"Best acc is now {best_acc:.2f}%")
 
+    # Report metrics
+    generate_graphs()

@@ -3,13 +3,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
-from utils import get_data_torchtext
+from utils import get_data_rnn 
 from tqdm import tqdm
 
 # Loading data and preprocessing
 file_path = "./data/data.csv"
 vocab_specials = ["<unk>"]
-vocab, tokenizer, data = get_data_torchtext(file_path=file_path, vocab_specials=vocab_specials)
+vocab, tokenizer, data = get_data_rnn(file_path=file_path, vocab_specials=vocab_specials)
 
 # Defining the RNN model
 class SimpleRNN(nn.Module):
